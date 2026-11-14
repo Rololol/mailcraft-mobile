@@ -1,6 +1,15 @@
 name: MailCraft Demo APK
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/android-demo.yml"
+      - "apps/mailcraft-android/**"
+      - "crates/**"
+      - "xtask/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
   workflow_dispatch:
 
 permissions:
