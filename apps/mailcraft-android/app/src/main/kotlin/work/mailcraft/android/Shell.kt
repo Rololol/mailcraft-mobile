@@ -43,27 +43,21 @@ internal class ShellData(
     val folderId: ULong?,
     val mail: InboxState,
     val version: String,
-    /** The language the owner chose in the app: its code, or "" for the system's. */
     val chosenLanguage: String,
+    val accountStatus: String,
 )
 
 /** What the shell asks of the app. */
 internal class ShellActions(
     val onFolder: (AccountItem, FolderItem) -> Unit,
     val onLanguage: (String) -> Unit,
+    val onAddMicrosoftAccount: (String) -> Unit,
 )
 
 /** The window is "expanded" from this width: the rail and the tablet layout. */
 private val ExpandedWidth = 840.dp
-
-/** Above this font scale the bottom bar keeps a label only for the tab that is on. */
 private const val LARGE_TEXT = 1.3f
 
-/**
- * The app's frame. Phone: a top bar with the ☰ button, the bottom bar of five tabs. Tablet (an
- * expanded window): the same top bar, and a rail of the five tabs down the side. On both the ☰
- * drawer holds the accounts with their folders, and Settings at its foot.
- */
 @Composable
 internal fun AppShell(
     texts: Texts,
@@ -106,6 +100,7 @@ internal fun AppShell(
                 onOpen = { nav = nav.openPage(it) },
                 onBack = { back?.let { previous -> nav = previous } },
                 onLanguage = actions.onLanguage,
+                onAddMicrosoftAccount = actions.onAddMicrosoftAccount,
             )
         } else {
             MainFrame(
