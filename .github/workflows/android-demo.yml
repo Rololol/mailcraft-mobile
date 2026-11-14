@@ -1,1 +1,58 @@
 
+name: MailCraft Demo APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.1
+          targets: aarch64-linux-android,x86_64-linux-android
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Android SDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;28.2.13676358"
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked --version 4.1.2
+
+      - name: Build MailCraft Android
+        run: cargo run --locked --package xtask -- mobile
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME_21_X64 }}
+
+      - name: Prepare APK
+        run: |
+          mkdir -p dist
+          cp apps/mailcraft-android/app/build/outputs/apk/debug/app-debug.apk dist/MailCraft-Demo.apk
+          test -s dist/MailCraft-Demo.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MailCraft-Demo-APK
+          path: dist/MailCraft-Demo.apk
+          retention-days: 14
