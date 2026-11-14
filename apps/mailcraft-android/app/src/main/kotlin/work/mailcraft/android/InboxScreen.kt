@@ -34,6 +34,7 @@ private val RowGap = 2.dp
 internal fun InboxScreen(texts: Texts, state: InboxState, modifier: Modifier = Modifier) {
     when (state) {
         InboxState.Loading -> Centered(texts.t("Loading…"), modifier)
+        InboxState.Empty -> Centered(texts.t("No mail account yet. Open Settings → Accounts to add one."), modifier)
         is InboxState.Failed -> Centered(state.message, modifier)
         is InboxState.Ready -> InboxList(state.model, modifier)
     }
@@ -102,6 +103,5 @@ internal fun Centered(text: String, modifier: Modifier = Modifier) {
     }
 }
 
-// The years 0001 to 9999: a time outside them is never a message's.
 private const val MIN_SECONDS = -62_135_596_800L
 private const val MAX_SECONDS = 253_402_300_799L
