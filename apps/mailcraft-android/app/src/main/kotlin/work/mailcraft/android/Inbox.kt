@@ -23,9 +23,8 @@ internal data class InboxModel(val title: String, val count: String, val rows: L
 
 internal sealed interface InboxState {
     data object Loading : InboxState
-
+    data object Empty : InboxState
     class Ready(val model: InboxModel) : InboxState
-
     class Failed(val message: String) : InboxState
 }
 
@@ -64,7 +63,6 @@ internal fun folderTree(folders: List<FolderItem>): List<FolderItem> {
     val byParent = folders.groupBy { it.parent?.takeIf { parent -> parent in ids } }
     val out = ArrayList<FolderItem>(folders.size)
     val seen = HashSet<ULong>()
-    // Depth first, with a stack of its own: a chain of folders as long as the data says is safe.
     val pending = ArrayDeque<Pair<FolderItem, Int>>()
     fun pushChildren(parent: ULong?, depth: Int) {
         byParent[parent].orEmpty().asReversed().forEach { pending.addLast(it to depth) }
@@ -76,21 +74,16 @@ internal fun folderTree(folders: List<FolderItem>): List<FolderItem> {
         out.add(folder.copy(depth = minOf(depth, MAX_FOLDER_DEPTH)))
         pushChildren(folder.id, depth + 1)
     }
-    // Folders only reachable through a loop of parents are still the owner's.
     folders.filter { seen.add(it.id) }.forEach { out.add(it.copy(depth = 0)) }
     return out
 }
 
-/**
- * Opens the sample mailbox and lists its accounts and folders, read-only. The sample is the core's
- * own invented mailbox; no account is signed in and nothing is fetched.
- */
+/** Reads the owner's actual mailbox; it never creates or seeds a sample mailbox. */
 internal suspend fun loadOutline(
     core: Core,
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ): MailboxOutline? = withContext(dispatcher) {
     try {
-        core.execute("file.new", """{"sample":true}""")
         val list = core.folders(0uL)
         val accounts = list.accounts.map { account ->
             val own = list.folders.filter { it.account == account.id }.map {
