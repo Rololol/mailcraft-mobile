@@ -1,4 +1,3 @@
-
 name: MailCraft Demo APK
 
 on:
@@ -40,7 +39,7 @@ jobs:
         run: cargo install cargo-ndk --locked --version 4.1.2
 
       - name: Build MailCraft Android
-        run: cargo run --locked --package xtask -- mobil
+        run: cargo run --locked --package xtask -- mobile
 
       - name: Prepare APK
         run: |
