@@ -1,4 +1,4 @@
-name: MailCraft Demo APK
+name: MailCraft Android
 
 on:
   push:
@@ -47,18 +47,34 @@ jobs:
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --locked --version 4.1.2
 
-      - name: Build MailCraft Android
+      - name: Build and verify Android
         run: cargo run --locked --package xtask -- mobile
 
-      - name: Prepare APK
+      - name: Prepare release APK
         run: |
-          mkdir -p dist
-          cp apps/mailcraft-android/app/build/outputs/apk/debug/app-debug.apk dist/MailCraft-Demo.apk
-          test -s dist/MailCraft-Demo.apk
+          mkdir -p dist/release
+          RELEASE_APK="apps/mailcraft-android/app/build/outputs/apk/release/app-release-unsigned.apk"
+          test -s "$RELEASE_APK"
+          cp "$RELEASE_APK" dist/release/MailCraft-Android-Release-unsigned.apk
+          test -s dist/release/MailCraft-Android-Release-unsigned.apk
+          sha256sum dist/release/MailCraft-Android-Release-unsigned.apk > dist/release/SHA256SUMS.txt
 
-      - name: Upload APK
+      - name: Prepare debug APK for testing
+        run: |
+          mkdir -p dist/debug
+          cp apps/mailcraft-android/app/build/outputs/apk/debug/app-debug.apk dist/debug/MailCraft-Android-Debug.apk
+          test -s dist/debug/MailCraft-Android-Debug.apk
+
+      - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: MailCraft-Demo-APK
-          path: dist/MailCraft-Demo.apk
+          name: MailCraft-Android-Release-Unsigned
+          path: dist/release/*
+          retention-days: 30
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MailCraft-Android-Debug
+          path: dist/debug/MailCraft-Android-Debug.apk
           retention-days: 14
