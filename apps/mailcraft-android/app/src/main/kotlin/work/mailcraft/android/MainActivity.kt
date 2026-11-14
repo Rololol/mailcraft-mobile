@@ -115,14 +115,21 @@ private fun CoreShell(core: Core, version: String, chosenLanguage: String, onLan
                     accountStatus = texts.t("Starting Microsoft sign-in…")
                     scope.launch {
                         try {
-                            val response = core.execute(
-                                "account.add",
-                                JSONObject().put("email", email).put("kind", "microsoft").toString(),
-                            )
-                            val accountId = JSONObject(response).getLong("id").toULong()
-                            core.signIn(accountId)
-                            accountStatus = texts.t("Account connected. Synchronising mail…")
+                            val existing = core.folders(0uL).accounts.firstOrNull {
+                                it.email.equals(email, ignoreCase = true)
+                            }
+                            val accountId = existing?.id ?: JSONObject(
+                                core.execute(
+                                    "account.add",
+                                    JSONObject().put("email", email).put("kind", "microsoft").toString(),
+                                ),
+                            ).getLong("id").toULong()
                             picked = null
+                            refresh += 1
+                            core.signIn(accountId)
+                            accountStatus = texts.t("Signed in. Starting mail synchronisation…")
+                            core.syncNow()
+                            accountStatus = texts.t("Account connected and synchronised.")
                             refresh += 1
                         } catch (failure: CoreException) {
                             accountStatus = failure.message ?: texts.t("Account setup failed.")
