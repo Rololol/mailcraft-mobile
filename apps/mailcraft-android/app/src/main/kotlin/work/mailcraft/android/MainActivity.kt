@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -29,12 +30,11 @@ import androidx.core.content.ContextCompat
 import java.time.ZoneId
 import java.util.Locale
 import java.util.TimeZone
+import kotlinx.coroutines.launch
+import org.json.JSONObject
 import uniffi.mailcraft_mobile.Core
+import uniffi.mailcraft_mobile.CoreException
 
-/**
- * The one window. An AppCompat activity, because that is what carries the per-app language to
- * Android 12 and before.
- */
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,8 +42,6 @@ class MainActivity : AppCompatActivity() {
         val application = application as? MailCraftApplication
         val started = application?.started ?: Started.Failed
         if (started is Started.Ready) {
-            // The language in use is the owner's choice when there is one, else the system's; the
-            // window is built again when it changes, so the words are read afresh.
             started.core.setLanguage(LanguageChoice.inUse(resources.configuration.locales))
             createChannels(applicationContext, channelSpecs(started.core::t))
         }
@@ -72,24 +70,25 @@ internal fun Root(started: Started, version: String, chosenLanguage: String, onL
     }
 }
 
-/** What reading the sample mailbox's outline came to; [outline] is null when it could not be read. */
 private class Outlined(val outline: MailboxOutline?)
 
 @Composable
 private fun CoreShell(core: Core, version: String, chosenLanguage: String, onLanguage: (String) -> Unit) {
     val texts = remember(core) { CoreTexts(core) }
-    val outlined by produceState<Outlined?>(null, core) { value = Outlined(loadOutline(core)) }
+    var refresh by remember { mutableStateOf(0) }
+    var accountStatus by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    val outlined by produceState<Outlined?>(null, core, refresh) { value = Outlined(loadOutline(core)) }
     var picked by rememberSaveable { mutableStateOf<Long?>(null) }
     val outline = outlined?.outline
     val folderId = picked?.toULong() ?: outline?.inboxId
     val folder = outline?.accounts?.flatMap { it.folders }?.firstOrNull { it.id == folderId }
     val mail by produceState<InboxState>(InboxState.Loading, core, outlined, folderId) {
-        // The last folder's messages must not stay under the new folder's name while it loads.
         value = InboxState.Loading
         value = when {
             outlined == null -> InboxState.Loading
             outline == null -> InboxState.Failed(core.t("The mailbox could not be read."))
-            folder == null || folderId == null -> InboxState.Failed(core.t("The sample mailbox has no Inbox."))
+            folder == null || folderId == null -> InboxState.Empty
             else -> loadFolder(core, folderId, folder.name)
         }
     }
@@ -100,19 +99,43 @@ private fun CoreShell(core: Core, version: String, chosenLanguage: String, onLan
         mail = mail,
         version = version,
         chosenLanguage = chosenLanguage,
+        accountStatus = accountStatus,
     )
     AppShell(
         texts = texts,
         data = data,
-        actions = ShellActions(onFolder = { _, selected -> picked = selected.id.toLong() }, onLanguage = onLanguage),
+        actions = ShellActions(
+            onFolder = { _, selected -> picked = selected.id.toLong() },
+            onLanguage = onLanguage,
+            onAddMicrosoftAccount = { address ->
+                val email = address.trim()
+                if (email.isEmpty()) {
+                    accountStatus = texts.t("Enter an email address.")
+                } else {
+                    accountStatus = texts.t("Starting Microsoft sign-in…")
+                    scope.launch {
+                        try {
+                            val response = core.execute(
+                                "account.add",
+                                JSONObject().put("email", email).put("kind", "microsoft").toString(),
+                            )
+                            val accountId = JSONObject(response).getLong("id").toULong()
+                            core.signIn(accountId)
+                            accountStatus = texts.t("Account connected. Synchronising mail…")
+                            picked = null
+                            refresh += 1
+                        } catch (failure: CoreException) {
+                            accountStatus = failure.message ?: texts.t("Account setup failed.")
+                        } catch (failure: Exception) {
+                            accountStatus = failure.message ?: texts.t("Account setup failed.")
+                        }
+                    }
+                }
+            },
+        ),
     )
 }
 
-/**
- * Gives message dates the device's current language and time zone. The language comes from the
- * configuration, so a change of it rebuilds the dates; a time-zone change is no configuration change,
- * so a broadcast for it refreshes the zone.
- */
 @Composable
 internal fun DeviceDateSettings(content: @Composable () -> Unit) {
     val context = LocalContext.current
@@ -121,7 +144,6 @@ internal fun DeviceDateSettings(content: @Composable () -> Unit) {
     DisposableEffect(context) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
-                // The JVM caches its default zone; the platform's change is what the receiver heard.
                 TimeZone.setDefault(null)
                 zone = ZoneId.systemDefault()
             }
